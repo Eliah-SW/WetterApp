@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wetter</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div class="bg-orb orb-1"></div>
+  <div class="bg-orb orb-2"></div>
+  <div class="bg-orb orb-3"></div>
+
+  <header class="header">
+    <div class="location-row">
+      <svg class="pin-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
+        <circle cx="12" cy="9" r="2.5"/>
+      </svg>
+      <span id="city-name">Wird geladen…</span>
+    </div>
+    <p class="date-label" id="date-label"></p>
+  </header>
+
+  <main>
+    <section class="hero-card" id="hero-card">
+      <div class="weather-icon-wrap" id="weather-emoji">⏳</div>
+      <div class="temp-block">
+        <span class="temp-main" id="temp-main">--</span>
+        <span class="temp-unit">°C</span>
+      </div>
+      <p class="condition" id="condition">Laden…</p>
+    </section>
+
+    <section class="detail-grid">
+      <div class="detail-card">
+        <span class="detail-icon">💧</span>
+        <span class="detail-label">Luftfeuchtigkeit</span>
+        <span class="detail-value" id="humidity">--%</span>
+      </div>
+      <div class="detail-card">
+        <span class="detail-icon">💨</span>
+        <span class="detail-label">Wind</span>
+        <span class="detail-value" id="wind">-- km/h</span>
+      </div>
+      <div class="detail-card">
+        <span class="detail-icon">👁️</span>
+        <span class="detail-label">Sichtweite</span>
+        <span class="detail-value" id="visibility">-- km</span>
+      </div>
+      <div class="detail-card">
+        <span class="detail-icon">🌡️</span>
+        <span class="detail-label">Gefühlt</span>
+        <span class="detail-value" id="feels-like">--°C</span>
+      </div>
+      <div class="detail-card">
+        <span class="detail-icon">🌅</span>
+        <span class="detail-label">Sonnenaufgang</span>
+        <span class="detail-value" id="sunrise">--:--</span>
+      </div>
+      <div class="detail-card">
+        <span class="detail-icon">🌇</span>
+        <span class="detail-label">Sonnenuntergang</span>
+        <span class="detail-value" id="sunset">--:--</span>
+      </div>
+    </section>
+
+    <div class="error-msg" id="error-msg"></div>
+
+    <div class="search-row">
+      <input type="text" id="city-input" class="city-input" placeholder="Stadt eingeben…" />
+      <button class="search-btn" id="search-btn">Suchen</button>
+    </div>
+  </main>
+
+  <footer class="footer">
+    Daten via <a href="https://open-meteo.com" target="_blank">Open-Meteo</a> &amp; <a href="https://nominatim.openstreetmap.org" target="_blank">Nominatim</a>
+  </footer>
+
+  <script>
+    const API = {
+      geocode: q => `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1`,
+      weather: (lat, lon) =>
+        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+        `&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,visibility` +
+        `&daily=sunrise,sunset&timezone=auto&forecast_days=1`
+    };
+
+    const WMO = {
+      0:'Klarer Himmel',1:'Überwiegend klar',2:'Teilweise bewölkt',3:'Bewölkt',
+      45:'Nebelig',48:'Nebel mit Reif',
+      51:'Leichter Nieselregen',53:'Nieselregen',55:'Starker Nieselregen',
+      61:'Leichter Regen',63:'Regen',65:'Starker Regen',
+      71:'Leichter Schneefall',73:'Schneefall',75:'Starker Schneefall',
+      77:'Schneegriesel',80:'Leichte Regenschauer',81:'Regenschauer',82:'Starke Regenschauer',
+      85:'Schneeschauer',86:'Starke Schneeschauer',
+      95:'Gewitter',96:'Gewitter mit Hagel',99:'Heftiges Gewitter'
+    };
+
+    const EMOJI = {
+      0:'☀️',1:'🌤️',2:'⛅',3:'☁️',
+      45:'🌫️',48:'🌫️',
+      51:'🌦️',53:'🌧️',55:'🌧️',
+      61:'🌦️',63:'🌧️',65:'🌧️',
+      71:'🌨️',73:'❄️',75:'❄️',77:'🌨️',
+      80:'🌦️',81:'🌧️',82:'⛈️',
+      85:'🌨️',86:'❄️',
+      95:'⛈️',96:'⛈️',99:'🌩️'
+    };
+
+    function fmt(ts) {
+      return new Date(ts * 1000).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function setDate() {
+      const d = new Date();
+      document.getElementById('date-label').textContent =
+        d.toLocaleDateString('de-CH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    }
+
+    async function loadWeather(lat, lon, name) {
+      try {
+        const res = await fetch(API.weather(lat, lon));
+        const data = await res.json();
+        const c = data.current;
+        const code = c.weather_code;
+
+        document.getElementById('city-name').textContent = name;
+        document.getElementById('temp-main').textContent = Math.round(c.temperature_2m);
+        document.getElementById('weather-emoji').textContent = EMOJI[code] ?? '🌈';
+        document.getElementById('condition').textContent = WMO[code] ?? 'Unbekannt';
+        document.getElementById('humidity').textContent = c.relative_humidity_2m + '%';
+        document.getElementById('wind').textContent = Math.round(c.wind_speed_10m) + ' km/h';
+        document.getElementById('visibility').textContent = (c.visibility / 1000).toFixed(1) + ' km';
+        document.getElementById('feels-like').textContent = Math.round(c.apparent_temperature) + '°C';
+
+        const sunrise = data.daily.sunrise[0];
+        const sunset  = data.daily.sunset[0];
+        document.getElementById('sunrise').textContent = sunrise.slice(-5);
+        document.getElementById('sunset').textContent  = sunset.slice(-5);
+
+        document.getElementById('error-msg').textContent = '';
+        document.getElementById('hero-card').classList.add('loaded');
+      } catch {
+        document.getElementById('error-msg').textContent = 'Fehler beim Laden der Wetterdaten.';
+      }
+    }
+
+    async function searchCity(query) {
+      try {
+        const res = await fetch(API.geocode(query));
+        const data = await res.json();
+        if (!data.length) {
+          document.getElementById('error-msg').textContent = 'Stadt nicht gefunden.';
+          return;
+        }
+        const { lat, lon, display_name } = data[0];
+        const shortName = display_name.split(',')[0];
+        await loadWeather(lat, lon, shortName);
+      } catch {
+        document.getElementById('error-msg').textContent = 'Geocoding-Fehler.';
+      }
+    }
+
+    function geolocate() {
+      if (!navigator.geolocation) { searchCity('Bern'); return; }
+      navigator.geolocation.getCurrentPosition(
+        async pos => {
+          const { latitude, longitude } = pos.coords;
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`);
+          const d = await res.json();
+          const name = d.address?.city || d.address?.town || d.address?.village || 'Mein Standort';
+          await loadWeather(latitude, longitude, name);
+        },
+        () => searchCity('Bern')
+      );
+    }
+
+    document.getElementById('search-btn').addEventListener('click', () => {
+      const q = document.getElementById('city-input').value.trim();
+      if (q) searchCity(q);
+    });
+    document.getElementById('city-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        const q = e.target.value.trim();
+        if (q) searchCity(q);
+      }
+    });
+
+    setDate();
+    geolocate();
+  </script>
+</body>
+</html>
